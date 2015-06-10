@@ -1,5 +1,17 @@
 package co.infinum.myawesomewatchface;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEvent;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataItem;
+import com.google.android.gms.wearable.DataItemBuffer;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.Wearable;
+
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 
@@ -13,9 +25,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.wearable.watchface.CanvasWatchFaceService;
+import android.util.Log;
 import android.view.SurfaceHolder;
 
 import java.util.concurrent.TimeUnit;
+
+import co.infinum.shared_code.Constants;
 
 /**
  * @author Koc
@@ -30,9 +45,11 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
         return new AwesomeWatchFaceEngine();
     }
 
-    private class AwesomeWatchFaceEngine extends Engine {
 
-        private final int WATCH_FACE_BACKGROUND = Color.parseColor("#222222");
+    private class AwesomeWatchFaceEngine extends Engine implements GoogleApiClient.ConnectionCallbacks,
+            GoogleApiClient.OnConnectionFailedListener {
+
+        private int watchFaceBackground = Color.parseColor("#222222");
 
         private final int INFINUM_RED = Color.parseColor("#ec2125");
 
@@ -47,6 +64,8 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
         private boolean mLowBitAmbient;
 
         private boolean mBurnInProtection;
+
+        private GoogleApiClient googleApiClient;
 
         private Runnable timeRunnable = new Runnable() {
             @Override
@@ -63,9 +82,16 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
             }
         };
 
+
         @Override
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
+
+            googleApiClient = new GoogleApiClient.Builder(AwesomeWatchFaceService.this)
+                    .addApi(Wearable.API)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .build();
 
             timePaint = new Paint();
             timePaint.setColor(INFINUM_RED);
@@ -83,8 +109,20 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
         @Override
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
+
+            if (visible) {
+
+                googleApiClient.connect();
+
+            } else {
+
+                disconnectGoogleApiClient();
+
+            }
+
             startTimer();
         }
+
 
         @Override
         public void onAmbientModeChanged(boolean inAmbientMode) {
@@ -135,7 +173,7 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
             DateTimeZone defaultZone = DateTimeZone.getDefault();
             DateTime time = new DateTime(defaultZone);
 
-            canvas.drawColor(WATCH_FACE_BACKGROUND);
+            canvas.drawColor(watchFaceBackground);
 
             String hourOfDay = Integer.toString(time.getHourOfDay());
             String minute = Integer.toString(time.getMinuteOfHour());
@@ -177,9 +215,81 @@ public class AwesomeWatchFaceService extends CanvasWatchFaceService {
 
 
         @Override
+        public void onConnected(Bundle bundle) {
+            Wearable.DataApi.addListener(googleApiClient, onDataChangedListener);
+            Wearable.DataApi.getDataItems(googleApiClient).setResultCallback(onConnectedResultCallback);
+        }
+
+        @Override
         public void onDestroy() {
             super.onDestroy();
             timer.removeCallbacks(timeRunnable);
+            disconnectGoogleApiClient();
+
+        }
+
+        private void disconnectGoogleApiClient() {
+            if (googleApiClient != null && googleApiClient.isConnected()) {
+                Wearable.DataApi.removeListener(googleApiClient, onDataChangedListener);
+                googleApiClient.disconnect();
+            }
+        }
+
+
+        @Override
+        public void onConnectionSuspended(int i) {
+            Log.d("koc", "onConnectionSuspended");
+        }
+
+        @Override
+        public void onConnectionFailed(ConnectionResult connectionResult) {
+
+        }
+
+        private final DataApi.DataListener onDataChangedListener = new DataApi.DataListener() {
+            @Override
+            public void onDataChanged(DataEventBuffer dataEvents) {
+
+                for (DataEvent event : dataEvents) {
+
+                    if (event.getType() == DataEvent.TYPE_CHANGED) {
+
+                        DataItem item = event.getDataItem();
+                        getInfoFromDataItem(item);
+
+                    }
+                }
+
+                dataEvents.release();
+            }
+        };
+
+        private final ResultCallback<DataItemBuffer> onConnectedResultCallback =
+                new ResultCallback<DataItemBuffer>() {
+
+            @Override
+            public void onResult(DataItemBuffer dataItems) {
+
+                for (DataItem item : dataItems) {
+                    getInfoFromDataItem(item);
+                }
+
+                dataItems.release();
+            }
+        };
+
+        private void getInfoFromDataItem(DataItem item) {
+
+            if (item.getUri().getPath().equals(Constants.MAP_REQUEST_PATH)) {
+
+                DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
+
+                if (dataMap.containsKey(Constants.KEY_BACKGROUND_COLOR)) {
+                    watchFaceBackground = dataMap.getInt(Constants.KEY_BACKGROUND_COLOR);
+                    invalidate();
+                }
+
+            }
 
         }
 

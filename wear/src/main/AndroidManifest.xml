@@ -24,6 +24,11 @@
                 android:permission="android.permission.BIND_WALLPAPER">
 
             <meta-data
+                    android:name="com.google.android.wearable.watchface.companionConfigurationAction"
+                    android:value="co.infinum.myawesomewatchface.CONFIG_DIGITAL"/>
+
+
+            <meta-data
                     android:name="android.service.wallpaper"
                     android:resource="@xml/watch_face"/>
 
@@ -34,6 +39,7 @@
             <meta-data
                     android:name="com.google.android.wearable.watchface.preview_circular"
                     android:resource="@drawable/preview"/>
+
 
             <intent-filter>
                 <action android:name="android.service.wallpaper.WallpaperService"/>
